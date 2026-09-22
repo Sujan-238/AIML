@@ -1,0 +1,296 @@
+import pandas as pd
+import math
+import matplotlib.pyplot as plt
+import networkx as nx
+
+# ============================================================
+# 1. PLAY TENNIS DATASET
+# ============================================================
+
+data = {
+    "Day": ["D1","D2","D3","D4","D5","D6","D7",
+            "D8","D9","D10","D11","D12","D13","D14"],
+
+    "Outlook": ["Sunny","Sunny","Overcast","Rain","Rain",
+                "Rain","Overcast","Sunny","Sunny","Rain",
+                "Sunny","Overcast","Overcast","Rain"],
+
+    "Temperature": ["Hot","Hot","Hot","Mild","Cool","Cool",
+                    "Cool","Mild","Cool","Mild","Mild","Mild",
+                    "Hot","Mild"],
+
+    "Humidity": ["High","High","High","High","Normal","Normal",
+                 "Normal","High","Normal","Normal","Normal",
+                 "High","Normal","High"],
+
+    "Wind": ["Weak","Strong","Weak","Weak","Weak","Strong",
+             "Strong","Weak","Weak","Weak","Strong","Strong",
+             "Weak","Strong"],
+
+    "Play Tennis": ["No","No","Yes","Yes","Yes","No",
+                    "Yes","No","Yes","Yes","Yes","Yes",
+                    "Yes","No"]
+}
+
+df = pd.DataFrame(data)
+
+# ============================================================
+# 2. ENTROPY
+# ============================================================
+
+def entropy(target):
+    values = target.value_counts()
+    total = len(target)
+    result = 0
+
+    for count in values:
+        probability = count / total
+        result -= probability * math.log2(probability)
+
+    return result
+
+
+# ============================================================
+# 3. INFORMATION GAIN
+# ============================================================
+
+def information_gain(df, attribute, target="Play Tennis"):
+
+    total_entropy = entropy(df[target])
+    weighted_entropy = 0
+
+    for value in df[attribute].unique():
+
+        subset = df[df[attribute] == value]
+
+        weight = len(subset) / len(df)
+
+        weighted_entropy += weight * entropy(subset[target])
+
+    return total_entropy - weighted_entropy
+
+
+# ============================================================
+# 4. ID3 ALGORITHM
+# ============================================================
+
+def id3(df, attributes, target="Play Tennis"):
+
+    # All examples have same class
+    if len(df[target].unique()) == 1:
+        return df[target].iloc[0]
+
+    # No attributes left
+    if len(attributes) == 0:
+        return df[target].mode()[0]
+
+    # Calculate information gain
+    gains = {}
+
+    for attribute in attributes:
+        gains[attribute] = information_gain(df, attribute, target)
+
+    # Select highest gain
+    best_attribute = max(gains, key=gains.get)
+
+    tree = {best_attribute: {}}
+
+    remaining_attributes = [
+        a for a in attributes if a != best_attribute
+    ]
+
+    # Create branches
+    for value in df[best_attribute].unique():
+
+        subset = df[df[best_attribute] == value]
+
+        tree[best_attribute][value] = id3(
+            subset,
+            remaining_attributes,
+            target
+        )
+
+    return tree
+
+
+# ============================================================
+# 5. BUILD TREE
+# ============================================================
+
+attributes = ["Outlook", "Temperature", "Humidity", "Wind"]
+
+decision_tree = id3(df, attributes)
+
+
+# ============================================================
+# 6. DISPLAY INFORMATION GAIN
+# ============================================================
+
+print("=" * 50)
+print("INFORMATION GAIN")
+print("=" * 50)
+
+for attribute in attributes:
+    print(
+        f"{attribute:15} : "
+        f"{information_gain(df, attribute):.3f}"
+    )
+
+
+# ============================================================
+# 7. DISPLAY TREE IN TEXT
+# ============================================================
+
+def print_tree(tree, indent=""):
+
+    if not isinstance(tree, dict):
+        print(indent + "-> " + tree)
+        return
+
+    for attribute, branches in tree.items():
+
+        for value, subtree in branches.items():
+
+            print(indent + attribute + " = " + value)
+
+            if isinstance(subtree, dict):
+                print_tree(subtree, indent + "    ")
+            else:
+                print(indent + "    -> " + subtree)
+
+
+print("\n" + "=" * 50)
+print("ID3 DECISION TREE")
+print("=" * 50)
+
+print_tree(decision_tree)
+
+
+# ============================================================
+# 8. ACTUAL GRAPHICAL TREE
+# ============================================================
+
+G = nx.DiGraph()
+
+# Root
+G.add_node("outlook", label="Outlook")
+
+# Outlook branches
+G.add_node("sunny", label="Sunny")
+G.add_node("overcast", label="Overcast")
+G.add_node("rain", label="Rain")
+
+G.add_edges_from([
+    ("outlook", "sunny"),
+    ("outlook", "overcast"),
+    ("outlook", "rain")
+])
+
+# Sunny branch
+G.add_node("humidity", label="Humidity")
+G.add_edge("sunny", "humidity")
+
+G.add_node("high", label="High")
+G.add_node("normal1", label="Normal")
+
+G.add_edges_from([
+    ("humidity", "high"),
+    ("humidity", "normal1")
+])
+
+G.add_node("no1", label="No")
+G.add_node("yes1", label="Yes")
+
+G.add_edges_from([
+    ("high", "no1"),
+    ("normal1", "yes1")
+])
+
+# Overcast branch
+G.add_node("yes2", label="Yes")
+G.add_edge("overcast", "yes2")
+
+# Rain branch
+G.add_node("wind", label="Wind")
+G.add_edge("rain", "wind")
+
+G.add_node("weak", label="Weak")
+G.add_node("strong", label="Strong")
+
+G.add_edges_from([
+    ("wind", "weak"),
+    ("wind", "strong")
+])
+
+G.add_node("yes3", label="Yes")
+G.add_node("no2", label="No")
+
+G.add_edges_from([
+    ("weak", "yes3"),
+    ("strong", "no2")
+])
+
+
+# ============================================================
+# 9. TREE POSITION
+# ============================================================
+
+pos = {
+
+    "outlook": (0, 5),
+
+    "sunny": (-5, 4),
+    "overcast": (0, 4),
+    "rain": (5, 4),
+
+    "humidity": (-5, 3),
+
+    "high": (-6, 2),
+    "normal1": (-4, 2),
+
+    "no1": (-6, 1),
+    "yes1": (-4, 1),
+
+    "yes2": (0, 3),
+
+    "wind": (5, 3),
+
+    "weak": (4, 2),
+    "strong": (6, 2),
+
+    "yes3": (4, 1),
+    "no2": (6, 1)
+}
+
+
+# ============================================================
+# 10. DRAW ACTUAL TREE
+# ============================================================
+
+labels = nx.get_node_attributes(G, "label")
+
+plt.figure(figsize=(14, 9))
+
+nx.draw(
+    G,
+    pos,
+    labels=labels,
+    with_labels=True,
+    node_size=3500,
+    node_color="lightblue",
+    edge_color="black",
+    font_size=11,
+    font_weight="bold",
+    arrows=True,
+    arrowsize=20
+)
+
+plt.title(
+    "ID3 Decision Tree - Play Tennis",
+    fontsize=18,
+    fontweight="bold"
+)
+
+plt.axis("off")
+plt.tight_layout()
+plt.show()
